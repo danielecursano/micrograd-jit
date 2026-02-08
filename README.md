@@ -14,7 +14,8 @@ cd micrograd-jit && pip install -e .
 
 ```python
 import numpy as np
-from micrograd_jit import MLP, jit 
+from micrograd.jit import jit 
+from micrograd.nn import MLP
 
 batch_size = 32
 X = np.random.normal(size=(batch_size, 2))
