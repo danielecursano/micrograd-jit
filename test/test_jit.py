@@ -12,6 +12,15 @@ def test_function():
 
     assert np.isclose(jit_f([1, 2]), f(Value(1), Value(2)).data)
 
+def test_more_than_2_args():
+
+    def f(x, y, z, w):
+        return (x * y + 2).relu() * (z+w)
+    
+    jit_f = jit(f)
+    assert jit_f.n_args == 4
+    assert np.isclose(jit_f([1, 2, 3, 4]), f(Value(1), Value(2), Value(3), Value(4)).data)
+
 def test_mlp():
 
     model = MLP(2, [16, 16, 1]) 
@@ -29,5 +38,6 @@ def test_mlp():
 
 if __name__ == "__main__":
     test_function()
+    test_more_than_2_args
     test_mlp()
     print("All jit tests passed!")
