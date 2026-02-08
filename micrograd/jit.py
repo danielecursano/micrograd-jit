@@ -6,6 +6,8 @@ import os
 import numpy as np
 from enum import Enum
 
+DEBUG = int(os.getenv("DEBUG", "0"))
+
 class FloatType(Enum):
     FLOAT = (ctypes.c_float, "float")
     DOUBLE = (ctypes.c_double, "double")
@@ -82,14 +84,14 @@ def generate_c_code(graph, inputs, dtype="float"):
     """
     Generate the C code given a computation graph and the list of arguments of the function.
     """
-    code = f"{dtype} f({', '.join(f'{dtype} {inp}' for inp in inputs)}) " + "{\n"
+    code = f"{dtype} f({', '.join(f'const {dtype} {inp}' for inp in inputs)}) " + "{\n"
     for dest, src, op in graph:
         if op == "def":
             code += f"\tconst {dtype} {dest} = {src[0]};\n"
         elif op == "ReLU":
-            code += f"\t{dtype} {dest} = {src[0]} > 0 ? {src[0]} : 0;\n"
+            code += f"\tconst {dtype} {dest} = {src[0]} > 0 ? {src[0]} : 0;\n"
         else:
-            code += f"\t{dtype} {dest} = {src[0]} {op} {src[1]};\n"
+            code += f"\tconst {dtype} {dest} = {src[0]} {op} {src[1]};\n"
     code += f"\treturn {graph[-1][0]};\n"
     code += "}"
     return code
@@ -125,7 +127,8 @@ def jit(func, dtype=FloatType.FLOAT):
     output = func(*inputs)
     graph, inputs = trace(output)
     inputs.sort(key=lambda x: x.split("_")[1])
-    c_code = generate_c_code(graph, inputs, dtype.string_repr)   
+    c_code = generate_c_code(graph, inputs, dtype.string_repr) 
+    if DEBUG: print(c_code)  
     with tempfile.TemporaryDirectory() as d:
         c_path = os.path.join(d, "jit.c")
         so_path = os.path.join(d, "jit.so")
