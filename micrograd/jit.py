@@ -6,6 +6,13 @@ import os
 import numpy as np
 
 class InputNode(Value):
+    """
+    A Value subclass used to build an IR for JIT compilation.
+
+    Each InputNode is assigned a unique integer ID, which is used
+    for hashing and for generating a stable, sorted input argument
+    list for the generated C function.
+    """
     ref = 0
 
     def __init__(self, data=float("inf")):
@@ -17,9 +24,23 @@ class InputNode(Value):
         return self.id
 
 def repr(node: Value):
+    """
+    Return a stable symbolic name for a Value node.
+
+    :param node: Value node to be named.
+    :type node: Value
+    :return: Symbolic name of the node.
+    :rtype: str
+    """
     return f"v_{hash(node)}"
 
 def trace(root: Value):
+    """
+    Trace a computation graph from the output node back to its inputs
+    and build an intermediate representation (IR).
+
+    Returns a topologically sorted graph and the corresponding input nodes.
+    """
     seen = set()
     nodes = []
 
@@ -48,8 +69,10 @@ def trace(root: Value):
 
     return graph, inputs
 
-
 def generate_c_code(graph, inputs):
+    """
+    Generate the C code given a computation graph and the list of arguments of the function.
+    """
     code = f"float f({', '.join(f'float {inp}' for inp in inputs)}) " + "{\n"
     for dest, src, op in graph:
         if op == "def":
@@ -63,30 +86,33 @@ def generate_c_code(graph, inputs):
     return code
 
 def parse_input(func):
+    """
+    Generate InputNode placeholders for each argument of the function
+    to be JIT-compiled.
+    """
     return [InputNode() for _ in range(func.__code__.co_argcount)]
 
 class JitFunction:
+    """
+    A callable wrapper for a JIT-compiled function.
+
+    This class stores a compiled function `f` and the expected number
+    of arguments. Calling an instance checks that the input length
+    matches `n_args` and then calls the underlying function. 
+    """
     def __init__(self, f, n_args):
         self.n_args = n_args
         self.f = f
 
-    def __call__(self, *inp):
-        # If a single argument is passed and it's a 1D array or list, treat it as a row
-        if len(inp) == 1:
-            X = np.asarray(inp[0], dtype=np.float32)
-            if X.ndim == 1:
-                # 1D array/list of length n_args → expand to shape (1, n_args)
-                if len(X) == self.n_args:
-                    inp = X[np.newaxis, :]
-                else:
-                    raise ValueError(f"Expected {self.n_args} arguments, got {len(X)}")
-            else:
-                # Already 2D, use as is
-                inp = X
-        # Map row by row
-        return np.array([self.f(*row) for row in inp])
+    def __call__(self, inp):
+        assert len(inp) == self.n_args
+        return self.f(*inp)
 
 def jit(func):
+    """
+    JIT-compile a Python function into a C implementation.
+    """
+    # TODO: Finalize numeric types across Python ↔ C JIT boundary.
     inputs = parse_input(func)
     output = func(*inputs)
     graph, inputs = trace(output)
