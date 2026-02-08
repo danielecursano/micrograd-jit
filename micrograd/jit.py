@@ -4,6 +4,15 @@ import ctypes
 import tempfile
 import os
 import numpy as np
+from enum import Enum
+
+class FloatType(Enum):
+    FLOAT = (ctypes.c_float, "float")
+    DOUBLE = (ctypes.c_double, "double")
+
+    def __init__(self, ctype, string_name):
+        self.ctype = ctype
+        self.string_repr = string_name
 
 class InputNode(Value):
     """
@@ -69,18 +78,18 @@ def trace(root: Value):
 
     return graph, inputs
 
-def generate_c_code(graph, inputs):
+def generate_c_code(graph, inputs, dtype="float"):
     """
     Generate the C code given a computation graph and the list of arguments of the function.
     """
-    code = f"float f({', '.join(f'float {inp}' for inp in inputs)}) " + "{\n"
+    code = f"{dtype} f({', '.join(f'{dtype} {inp}' for inp in inputs)}) " + "{\n"
     for dest, src, op in graph:
         if op == "def":
-            code += f"\tconst float {dest} = {src[0]};\n"
+            code += f"\tconst {dtype} {dest} = {src[0]};\n"
         elif op == "ReLU":
-            code += f"\tfloat {dest} = {src[0]} > 0 ? {src[0]} : 0;\n"
+            code += f"\t{dtype} {dest} = {src[0]} > 0 ? {src[0]} : 0;\n"
         else:
-            code += f"\tfloat {dest} = {src[0]} {op} {src[1]};\n"
+            code += f"\t{dtype} {dest} = {src[0]} {op} {src[1]};\n"
     code += f"\treturn {graph[-1][0]};\n"
     code += "}"
     return code
@@ -108,16 +117,15 @@ class JitFunction:
         assert len(inp) == self.n_args
         return self.f(*inp)
 
-def jit(func):
+def jit(func, dtype=FloatType.FLOAT):
     """
     JIT-compile a Python function into a C implementation.
     """
-    # TODO: Finalize numeric types across Python ↔ C JIT boundary.
     inputs = parse_input(func)
     output = func(*inputs)
     graph, inputs = trace(output)
     inputs.sort(key=lambda x: x.split("_")[1])
-    c_code = generate_c_code(graph, inputs)   
+    c_code = generate_c_code(graph, inputs, dtype.string_repr)   
     with tempfile.TemporaryDirectory() as d:
         c_path = os.path.join(d, "jit.c")
         so_path = os.path.join(d, "jit.so")
@@ -130,7 +138,7 @@ def jit(func):
         ])
 
         lib = ctypes.CDLL(so_path)
-        lib.f.argtypes = [ctypes.c_float, ctypes.c_float]
-        lib.f.restype = ctypes.c_float
+        lib.f.argtypes = [dtype.ctype]*len(inputs)
+        lib.f.restype = dtype.ctype
 
         return JitFunction(lib.f, len(inputs))

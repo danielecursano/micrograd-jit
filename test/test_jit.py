@@ -23,7 +23,7 @@ def test_mlp():
 
     X = np.random.normal(size=(100, 2))
     output = np.array([x.data for x in list(map(model, X))], dtype=np.float32)
-    total_diff = np.sum(np.abs(jit_f(X) - output))
+    total_diff = np.sum(np.abs(list(map(jit_f, X)) - output))
     assert total_diff < 1e-4
 
 
